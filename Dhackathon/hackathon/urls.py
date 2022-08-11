@@ -14,21 +14,33 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 #from django.contrib import admin
-from django.urls import path
-from nny.views import *
+#from django.contrib import admin
+from django.urls import path, re_path, include
+from rest_framework import routers
 
-urlpatterns = [
+from nny.views import *
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+
+
+schema_view = get_schema_view(
+    openapi.Info(title="Snippets API",
+                default_version='v1',
+                description="Test description",
+                terms_of_service="https://www.google.com/policies/terms/",
+                contact=openapi.Contact(email="contact@snippets.local"),
+                license=openapi.License(name="BSD License"),
+                ),
+    public=True,
+    permission_classes=(permissions.AllowAny,),
+)
+
+router = routers.DefaultRouter(trailing_slash=False)
+router.register('api/auth', AuthViewSet, basename='auth')
+
+
+urlpatterns = router.urls + [
     #path('admin/', admin.site.urls),
-    path("create/", UserCreateAPIView.as_view(), name=""),
-    path("login/", LoginAPIView.as_view(), name=""),
-    path("logout/", LogoutAPIView.as_view(), name=""),
-    path('change_password/<int:pk>/', ChangePasswordView.as_view(), name='auth_change_password'),
-    path("profile" ,ProfileAPIview.as_view(),name="profile"),
-    path("update_profile/", ProfileUpdateAPIview.as_view(), name="update_profile"),
-    path('warning_list/', WarningListView.as_view(), name = 'auth_warning_list'),
-    path('warning/',WarningView.as_view(), name = 'auth_warning'),
-    path('usedeye_list/', UsedEyeListView.as_view(), name = 'auth_usedeye_list'),
-    path('usedeye/',UsedEyeView.as_view(), name = 'auth_usedeye'),
-    path('eye_list/', EyeListView.as_view(), name = 'auth_eye_list'),
-    path('eye/',EyeView.as_view(), name = 'auth_eye'),
+    path('nny/', include('nny.urls')),
 ]
