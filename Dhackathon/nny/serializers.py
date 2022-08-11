@@ -1,114 +1,112 @@
+from rest_framework.authtoken.models import Token
 from rest_framework import serializers
+from django.contrib.auth import get_user_model, password_validation
+from django.contrib.auth.models import BaseUserManager 
 from .models import *
-from django.contrib.auth import authenticate
-from django.contrib.auth.password_validation import validate_password
 
-class UserSerializer(serializers.ModelSerializer):
-    profile='ProfileSerializer(many=False,read_only=True)'
+User = get_user_model()
+
+class SeatSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
-        fields = ['pk','name','profile','username']
-        extra_kwargs={
-            "profile":{'read_only':True}
-        }
+        model = Seat
+        fields = ['id', 'user', 'train', 'seat_num', 'is_seated', 'station']
 
-class ProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
+class TrainSerializer(serializers.ModelSerializer):
+    seat = SeatSerializer(many=True, read_only=True)
+
     class Meta:
-        model = Profile
-        fields = "__all__"
+        model = Train
+        fields = ['id', 'train_id', 'seat']
 
-class UpdateProfileSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True,many=False)
-    class Meta:
-        model = Profile
-        fields = "__all__"
-
-    def get_profile(self,instance,data):
-        instance.bio = data.get('eye', instance.eye)
-        instance = super().get_fields(instance, data)
-        return instance
-
-    def update(request, instance, validated_data):
-        instance.eye = validated_data['eye']
-
-        instance.save()
-        instance=super().update(instance,validated_data)
-        return instance
+class UserLoginSerializer(serializers.Serializer):
+    email = serializers.CharField(max_length=300, required=True)
+    password = serializers.CharField(required=True, write_only=True)
 
 
-class LoginSerializer(serializers.Serializer):
-    name = serializers.CharField(write_only=True, required=True)
-    password = serializers.CharField(write_only=True, required=True)
-    
-    def validate_user(self):
-        new_user = authenticate(
-            name=self.validated_data["name"],
-            password=self.validated_data["password"],
-        )
-        if new_user is not None:
-            return new_user
-        raise serializers.ValidationError("The User does not Exist")
-
-# User create serializer
-class UserCreateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ("id", "name", "username", "password")
-        extra_kwargs = {"password": {"write_only": True}}
-
-    def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        return user
-
-
-# Changing the password
-class ChangePasswordSerializer(serializers.ModelSerializer):
-    
-    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
-    password2 = serializers.CharField(write_only=True, required=True)
-    old_password = serializers.CharField(write_only=True, required=True)
+class LoginSerializer(serializers.ModelSerializer):
+    auth_token = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ('old_password', 'password', 'password2')
+        fields = ('id', 'email', 'username', 'withdrawal_status', 'auth_token')
 
-    def validate(self, attrs):
-        if attrs['password'] != attrs['password2']:
-            raise serializers.ValidationError({"password": "Password fields didn't match."})
+    def get_auth_token(self, obj):
+        token = Token.objects.get(user=obj)
+        return token.key
 
-        return attrs
 
-    def validate_old_password(self, value):
-        user = self.context['request'].user
-        if not user.check_password(value):
-            raise serializers.ValidationError({"old_password": "Old password is not correct"})
+class AuthUserSerializer(serializers.ModelSerializer):
+    auth_token = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ('id', 'email', 'username', 'auth_token')
+
+    def get_auth_token(self, obj):
+        token = Token.objects.create(user=obj)
+        return token.key
+
+
+class EmptySerializer(serializers.Serializer):
+    pass
+
+
+class UserRegisterSerializer(serializers.ModelSerializer):
+    """
+    A user serializer for registering the user
+    """
+
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'password', 'first_name', 'last_name')
+
+    def validate_email(self, value):
+        user = User.objects.filter(email=value)
+        if user:
+            raise serializers.ValidationError("Email is already taken")
+        return BaseUserManager.normalize_email(value)
+
+    def validate_password(self, value):
+        password_validation.validate_password(value)
         return value
 
-            
-    def update(self, instance, validated_data):
-        user = self.context['request'].user
 
-        if user.pk != instance.pk:
-            raise serializers.ValidationError({"authorize": "You dont have permission for this user."})
+class PasswordChangeSerializer(serializers.Serializer):
+    current_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
 
-        instance.set_password(validated_data['password'])
-        instance.save()
+    def validate_current_password(self, value):
+        if not self.context['request'].user.check_password(value):
+            raise serializers.ValidationError('Current password does not match')
+        return value
 
-        return instance
-    
-    
-class WarningListSerializer(serializers.ModelSerializer):
+    def validate_new_password(self, value):
+        password_validation.validate_password(value)
+        return value
+
+
+class WithdrawalSerializer(serializers.Serializer):
+    email = serializers.CharField(max_length=300, required=True)
+
+
+class UserInfoSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Warnings
-        fields = '__all__'
+        model = User
+        fields = ('id', 'email')
 
-class UsedEyeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = UsedEye
-        fields = '__all__'
 
-class EyeSerializer(serializers.ModelSerializer):
+class PointSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Eye
-        fields= '__all__'
+        model = Point_List
+        fields = ['total_point']
+
+
+class PointListSerializer(serializers.ModelSerializer):
+    action = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Point_List
+        fields = ('point', 'total_point', 'date', 'detail_action', 'action', 'uid')
+
+    def get_action(self, obj: Point_List):
+        return obj.action_id.action
